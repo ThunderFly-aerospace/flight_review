@@ -482,6 +482,15 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page):
         if data_plot.finalize() is not None: plots.append(data_plot)
 
 
+    # rotor frequency sensor
+    data_plot = DataPlot(data, plot_config, 'rotor_frequency',
+                         y_start=0, y_axis_label='[Hz]', title='Rotor Frequency Sensor',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    data_plot.add_graph(['indicated_frequency'], colors3[0:1],
+                        ['Frequency'])
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
     # raw acceleration
     data_plot = DataPlot(data, plot_config, 'sensor_combined',
                          y_axis_label='[m/s^2]', title='Raw Acceleration',
