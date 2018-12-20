@@ -54,7 +54,8 @@ for(var j=0; j<pos_flight_modes.length - 1; j++)
 
   var options = {
       color: cur_flight_color,
-      width: 5
+      width: 5,
+      minDist: 0,
        }
 
   var polyline = new SMap.Geometry(SMap.GEOMETRY_POLYLINE, null, points, options);
