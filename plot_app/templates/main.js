@@ -121,12 +121,18 @@ function setupPlots() {
 			var a = $('<a id="'+plot_fragments[index_of]+'" '+
 					'class="fragment bk-plot-layout"' +
 					' href="#'+plot_fragments[index_of]+'"><big>&para;</big></a>');
-			$(plot_view.plot_canvas_view.canvas_view.canvas_el).before(a);
+			$(plot_view.canvas_view.canvas_el).before(a);
 		}
 	});
 
 
 	$('#loading-plots').hide();
+
+	$('#show-additional-data-btn').click(function(){
+		$(this).text(function(i,old){
+			return old.includes('Show') ?  'Hide additional Data' : 'Show additional Data';
+		});
+	});
 
 	// because bokeh dynamically loads the content after startup, jumping to
 	// fragments does not work on page load, so we do it manually

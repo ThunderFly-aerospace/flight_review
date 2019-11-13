@@ -20,6 +20,8 @@ class DBData:
         self.rating = ''
         self.video_url = ''
         self.error_labels = []
+        self.source = ''
+
         super().__init__()
 
     def wind_speed_str(self):
@@ -49,6 +51,7 @@ class DBData:
         jsondict['rating'] = self.rating
         jsondict['video_url'] = self.video_url
         jsondict['error_labels'] = self.error_labels
+        jsondict['source'] = self.source
         return jsondict
 
 
@@ -110,7 +113,7 @@ class DBDataGenerated:
         try:
             cur_dataset = ulog.get_dataset('vehicle_status')
             flight_mode_changes = cur_dataset.list_value_changes('nav_state')
-            obj.flight_modes = {x[1] for x in flight_mode_changes}
+            obj.flight_modes = {int(x[1]) for x in flight_mode_changes}
 
             # get the durations
             # make sure the first entry matches the start of the logging
@@ -118,7 +121,7 @@ class DBDataGenerated:
                 flight_mode_changes[0] = (ulog.start_timestamp, flight_mode_changes[0][1])
             flight_mode_changes.append((ulog.last_timestamp, -1))
             for i in range(len(flight_mode_changes)-1):
-                flight_mode = flight_mode_changes[i][1]
+                flight_mode = int(flight_mode_changes[i][1])
                 flight_mode_duration = int((flight_mode_changes[i+1][0] -
                                             flight_mode_changes[i][0]) / 1e6)
                 obj.flight_mode_durations.append((flight_mode, flight_mode_duration))
@@ -142,10 +145,10 @@ class DBDataGenerated:
 
     def to_json_dict(self):
         jsondict = dict()
-        jsondict['duration_s'] = self.duration_s
+        jsondict['duration_s'] = int(self.duration_s)
         jsondict['mav_type'] = self.mav_type
         jsondict['estimator'] = self.estimator
-        jsondict['sys_autostart_id'] = self.sys_autostart_id
+        jsondict['sys_autostart_id'] = int(self.sys_autostart_id)
         jsondict['sys_hw'] = self.sys_hw
         jsondict['ver_sw'] = self.ver_sw
         jsondict['ver_sw_release'] = self.ver_sw_release

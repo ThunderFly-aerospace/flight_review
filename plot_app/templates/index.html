@@ -14,6 +14,7 @@
 {{ title_html }}
 {{ hardfault_html }}
 {{ info_table_html }}
+{{ corrupt_log_html }}
 {{ error_labels_html }}
 
 {% if has_position_data %}
@@ -82,12 +83,14 @@ m.setCenterZoom(center[0],center[1],false);
 
 {% if is_plot_page %}
 
-<div id="loading-plots" style="height: 50px;"><p><big><br/>Loading Plots...</big></p></div>
+<div id="loading-plots"><p><big><br/>Loading Plots...</big><br/></p></div>
 {% endif %}
 
-{% endif %} {# internal_error #}
-
 {{ plot_div|indent(8) }}
+
+{{ additional_info }}
+
+{% endif %} {# internal_error #}
 
 
 {% include 'footer.html' %}

@@ -228,7 +228,7 @@ def map_projection(lat, lon, anchor_lat, anchor_lon):
     arg[arg > 1] = 1
     arg[arg < -1] = -1
 
-    np.set_printoptions(threshold=np.nan)
+    np.set_printoptions(threshold=sys.maxsize)
     c = np.arccos(arg)
     k = np.copy(lat)
     for i in range(len(lat)):
@@ -299,15 +299,15 @@ def load_ulog_file(file_name):
                   'vehicle_local_position_setpoint',
                   'vehicle_global_position', 'actuator_controls_0',
                   'actuator_controls_1', 'actuator_outputs',
-                  'vehicle_attitude', 'vehicle_attitude_setpoint',
+                  'vehicle_angular_velocity', 'vehicle_attitude', 'vehicle_attitude_setpoint',
                   'vehicle_rates_setpoint', 'rc_channels', 'input_rc',
                   'position_setpoint_triplet', 'vehicle_attitude_groundtruth',
                   'vehicle_local_position_groundtruth', 'vehicle_visual_odometry',
                   'vehicle_status', 'airspeed', 'manual_control_setpoint',
                   'rate_ctrl_status', 'vehicle_air_data',
-                  'vehicle_magnetometer', 'system_power', 'rotor_frequency']
+                  'vehicle_magnetometer', 'system_power', 'tecs_status', 'rotor_frequency']
     try:
-        ulog = ULog(file_name, msg_filter)
+        ulog = ULog(file_name, msg_filter, disable_str_exceptions=False)
     except FileNotFoundError:
         print("Error: file %s not found" % file_name)
         raise

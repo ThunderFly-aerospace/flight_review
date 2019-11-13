@@ -16,7 +16,7 @@ from plotting import *
 from plotted_tables import (
     get_logged_messages, get_changed_parameters,
     get_info_table_html, get_heading_html, get_error_labels_html,
-    get_hardfault_html
+    get_hardfault_html, get_corrupt_log_html
     )
 
 #pylint: disable=cell-var-from-loop, undefined-loop-variable,
@@ -65,11 +65,20 @@ The analysis may take a while...
     x_range_offset = (ulog.last_timestamp - ulog.start_timestamp) * 0.05
     x_range = Range1d(ulog.start_timestamp - x_range_offset, ulog.last_timestamp + x_range_offset)
 
+    # COMPATIBILITY support for old logs
+    if any(elem.name == 'vehicle_angular_velocity' for elem in data):
+        rate_topic_name = 'vehicle_angular_velocity'
+        rate_field_names = ['xyz[0]', 'xyz[1]', 'xyz[2]']
+    else: # old
+        rate_topic_name = 'rate_ctrl_status'
+        rate_field_names = ['rollspeed', 'pitchspeed', 'yawspeed']
+
     # required PID response data
     pid_analysis_error = False
     try:
-        rate_ctrl_status = ulog.get_dataset('rate_ctrl_status')
-        gyro_time = rate_ctrl_status.data['timestamp']
+        rate_data = ulog.get_dataset(rate_topic_name)
+        gyro_time = rate_data.data['timestamp']
+
         vehicle_attitude = ulog.get_dataset('vehicle_attitude')
         attitude_time = vehicle_attitude.data['timestamp']
         vehicle_rates_setpoint = ulog.get_dataset('vehicle_rates_setpoint')
@@ -82,7 +91,7 @@ The analysis may take a while...
         print(type(error), ":", error)
         pid_analysis_error = True
         div = Div(text="<p><b>Error</b>: missing topics or data for PID analysis "
-                  "(required topics: rate_ctrl_status, vehicle_rates_setpoint, "
+                  "(required topics: vehicle_angular_velocity, vehicle_rates_setpoint, "
                   "vehicle_attitude, vehicle_attitude_setpoint and "
                   "actuator_controls_0).</p>", width=int(plot_width*0.9))
         plots.append(widgetbox(div, width=int(plot_width*0.9)))
@@ -97,6 +106,8 @@ The analysis may take a while...
 
         thrust_max = 200
         actuator_controls = data_plot.dataset
+        if actuator_controls is None: # do not show the rate plot if actuator_controls is missing
+            continue
         time_controls = actuator_controls.data['timestamp']
         thrust = actuator_controls.data['control[3]'] * thrust_max
         # downsample if necessary
@@ -115,8 +126,9 @@ The analysis may take a while...
         p.patch(time_controls, thrust, line_width=0, fill_color='#555555',
                 fill_alpha=0.4, alpha=0, legend='Thrust [0, {:}]'.format(thrust_max))
 
-        data_plot.change_dataset('vehicle_attitude')
-        data_plot.add_graph([lambda data: (axis+'speed', np.rad2deg(data[axis+'speed']))],
+        data_plot.change_dataset(rate_topic_name)
+        data_plot.add_graph([lambda data: ("rate"+str(index),
+                                           np.rad2deg(data[rate_field_names[index]]))],
                             colors3[0:1], [axis_name+' Rate Estimated'], mark_nan=True)
         data_plot.change_dataset('vehicle_rates_setpoint')
         data_plot.add_graph([lambda data: (axis, np.rad2deg(data[axis]))],
@@ -139,7 +151,7 @@ The analysis may take a while...
         # PID response
         if not pid_analysis_error:
             try:
-                gyro_rate = np.rad2deg(rate_ctrl_status.data[axis+'speed'])
+                gyro_rate = np.rad2deg(rate_data.data[rate_field_names[index]])
                 setpoint = _resample(vehicle_rates_setpoint.data['timestamp'],
                                      np.rad2deg(vehicle_rates_setpoint.data[axis]),
                                      gyro_time)
@@ -207,25 +219,40 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             if 'voltage3V3_v' in topic.data:    # old (prior to PX4/Firmware:213aa93)
                 topic.data['voltage3v3_v'] = topic.data.pop('voltage3V3_v')
 
+    if any(elem.name == 'vehicle_angular_velocity' for elem in data):
+        rate_estimated_topic_name = 'vehicle_angular_velocity'
+        rate_groundtruth_topic_name = 'vehicle_angular_velocity_groundtruth'
+        rate_field_names = ['xyz[0]', 'xyz[1]', 'xyz[2]']
+    else: # old
+        rate_estimated_topic_name = 'vehicle_attitude'
+        rate_groundtruth_topic_name = 'vehicle_attitude_groundtruth'
+        rate_field_names = ['rollspeed', 'pitchspeed', 'yawspeed']
+
     # initialize flight mode changes
     flight_mode_changes = get_flight_mode_changes(ulog)
 
     # VTOL state changes & vehicle type
-    is_multicopter = False # this is False for VTOLs as well
     vtol_states = None
+    is_vtol = False
     try:
         cur_dataset = ulog.get_dataset('vehicle_status')
         if np.amax(cur_dataset.data['is_vtol']) == 1:
+            is_vtol = True
             vtol_states = cur_dataset.list_value_changes('in_transition_mode')
             # find mode after transitions (states: 1=transition, 2=FW, 3=MC)
+            if 'vehicle_type' in cur_dataset.data:
+                vehicle_type_field = 'vehicle_type'
+                vtol_state_mapping = {2: 2, 1: 3}
+            else: # COMPATIBILITY: old logs (https://github.com/PX4/Firmware/pull/11918)
+                vehicle_type_field = 'is_rotary_wing'
+                vtol_state_mapping = {0: 2, 1: 3}
             for i in range(len(vtol_states)):
                 if vtol_states[i][1] == 0:
                     t = vtol_states[i][0]
                     idx = np.argmax(cur_dataset.data['timestamp'] >= t) + 1
-                    vtol_states[i] = (t, 2 + cur_dataset.data['is_rotary_wing'][idx])
+                    vtol_states[i] = (t, vtol_state_mapping[
+                        cur_dataset.data[vehicle_type_field][idx]])
             vtol_states.append((ulog.last_timestamp, -1))
-        elif np.amax(cur_dataset.data['is_rotary_wing']) == 1:
-            is_multicopter = True
     except (KeyError, IndexError) as error:
         vtol_states = None
 
@@ -246,6 +273,9 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     if hardfault_html is not None:
         curdoc().template_variables['hardfault_html'] = hardfault_html
 
+    corrupt_log_html = get_corrupt_log_html(ulog)
+    if corrupt_log_html:
+        curdoc().template_variables['corrupt_log_html'] = corrupt_log_html
 
     # Position plot
     data_plot = DataPlot2D(data, plot_config, 'vehicle_local_position',
@@ -308,7 +338,7 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
 
 
     # Roll/Pitch/Yaw angle & angular rate
-    for axis in ['roll', 'pitch', 'yaw']:
+    for index, axis in enumerate(['roll', 'pitch', 'yaw']):
 
         # angle
         axis_name = axis.capitalize()
@@ -319,10 +349,9 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         data_plot.add_graph([lambda data: (axis, np.rad2deg(data[axis]))],
                             colors3[0:1], [axis_name+' Estimated'], mark_nan=True)
         data_plot.change_dataset('vehicle_attitude_setpoint')
-        # in fixed-wing, the attitude setpoint is allowed to be NaN
         data_plot.add_graph([lambda data: (axis+'_d', np.rad2deg(data[axis+'_d']))],
                             colors3[1:2], [axis_name+' Setpoint'],
-                            mark_nan=is_multicopter, use_step_lines=True)
+                            use_step_lines=True)
         if axis == 'yaw':
             data_plot.add_graph(
                 [lambda data: ('yaw_sp_move_rate', np.rad2deg(data['yaw_sp_move_rate']))],
@@ -336,11 +365,12 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         if data_plot.finalize() is not None: plots.append(data_plot)
 
         # rate
-        data_plot = DataPlot(data, plot_config, 'vehicle_attitude',
+        data_plot = DataPlot(data, plot_config, rate_estimated_topic_name,
                              y_axis_label='[deg/s]', title=axis_name+' Angular Rate',
                              plot_height='small', changed_params=changed_params,
                              x_range=x_range)
-        data_plot.add_graph([lambda data: (axis+'speed', np.rad2deg(data[axis+'speed']))],
+        data_plot.add_graph([lambda data: (axis+'speed',
+                                           np.rad2deg(data[rate_field_names[index]]))],
                             colors3[0:1], [axis_name+' Rate Estimated'], mark_nan=True)
         data_plot.change_dataset('vehicle_rates_setpoint')
         data_plot.add_graph([lambda data: (axis, np.rad2deg(data[axis]))],
@@ -356,8 +386,9 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         data_plot.change_dataset('rate_ctrl_status')
         data_plot.add_graph([lambda data: (axis, data[axis+'speed_integ']*100)],
                             colors3[2:3], [axis_name+' Rate Integral '+rate_int_limit])
-        data_plot.change_dataset('vehicle_attitude_groundtruth')
-        data_plot.add_graph([lambda data: (axis+'speed', np.rad2deg(data[axis+'speed']))],
+        data_plot.change_dataset(rate_groundtruth_topic_name)
+        data_plot.add_graph([lambda data: (axis+'speed',
+                                           np.rad2deg(data[rate_field_names[index]]))],
                             [color_gray], [axis_name+' Rate Groundtruth'])
         plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
@@ -455,10 +486,10 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                             colors3, ['Roll Rate', 'Pitch Rate', 'Yaw Rate'], mark_nan=True)
         plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
-        data_plot.change_dataset('vehicle_attitude_groundtruth')
-        data_plot.add_graph([lambda data: ('rollspeed', np.rad2deg(data['rollspeed'])),
-                             lambda data: ('pitchspeed', np.rad2deg(data['pitchspeed'])),
-                             lambda data: ('yawspeed', np.rad2deg(data['yawspeed']))],
+        data_plot.change_dataset(rate_groundtruth_topic_name)
+        data_plot.add_graph([lambda data: ('rollspeed', np.rad2deg(data[rate_field_names[0]])),
+                             lambda data: ('pitchspeed', np.rad2deg(data[rate_field_names[1]])),
+                             lambda data: ('yawspeed', np.rad2deg(data[rate_field_names[2]]))],
                             colors8[2:5],
                             ['Roll Rate Groundtruth', 'Pitch Rate Groundtruth',
                              'Yaw Rate Groundtruth'])
@@ -466,19 +497,22 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         if data_plot.finalize() is not None: plots.append(data_plot)
 
 
-    # Airspeed vs Ground speed: but only if there's valid airspeed data
+    # Airspeed vs Ground speed: but only if there's valid airspeed data or a VTOL
     try:
-        cur_dataset = ulog.get_dataset('airspeed')
-        if np.amax(cur_dataset.data['indicated_airspeed_m_s']) > 0.1:
+        if is_vtol or ulog.get_dataset('airspeed') is not None:
             data_plot = DataPlot(data, plot_config, 'vehicle_global_position',
                                  y_axis_label='[m/s]', title='Airspeed',
                                  plot_height='small',
                                  changed_params=changed_params, x_range=x_range)
             data_plot.add_graph([lambda data: ('groundspeed_estimated',
                                                np.sqrt(data['vel_n']**2 + data['vel_e']**2))],
-                                colors3[2:3], ['Ground Speed Estimated'])
+                                colors8[0:1], ['Ground Speed Estimated'])
             data_plot.change_dataset('airspeed')
-            data_plot.add_graph(['indicated_airspeed_m_s'], colors2[0:1], ['Airspeed Indicated'])
+            data_plot.add_graph(['indicated_airspeed_m_s'], colors8[1:2], ['Airspeed Indicated'])
+            data_plot.change_dataset('vehicle_gps_position')
+            data_plot.add_graph(['vel_m_s'], colors8[2:3], ['Ground Speed (from GPS)'])
+            data_plot.change_dataset('tecs_status')
+            data_plot.add_graph(['airspeed_sp'], colors8[3:4], ['Airspeed Setpoint'])
 
             plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
@@ -486,6 +520,15 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     except (KeyError, IndexError) as error:
         pass
 
+    # TECS (fixed-wing or VTOLs)
+    data_plot = DataPlot(data, plot_config, 'tecs_status', y_start=0, title='TECS',
+                         y_axis_label='[m/s]', plot_height='small',
+                         changed_params=changed_params, x_range=x_range)
+    data_plot.add_graph(['height_rate', 'height_rate_setpoint'],
+                        colors2, ['Height Rate', 'Height Rate Setpoint'],
+                        mark_nan=True)
+    plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
+    if data_plot.finalize() is not None: plots.append(data_plot)
 
     # rotor frequency sensor old - old message contains only information in Hz, without information about units in name
     data_plot = DataPlot(data, plot_config, 'rotor_frequency',
@@ -635,7 +678,24 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                          'accelerometer_m_s2[2]'], colors3, ['X', 'Y', 'Z'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
+    # Vibration Metrics
+    data_plot = DataPlot(data, plot_config, 'estimator_status',
+                         title='Vibration Metrics',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range, y_start=0)
+    data_plot.add_graph(['vibe[2]'], colors3[2:3], ['Delta Velocity Vibration Level [m/s]'])
+    data_plot.add_horizontal_background_boxes(
+        ['green', 'orange', 'red'], [0.02, 0.04])
 
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+    # Acceleration Spectrogram
+    data_plot = DataPlotSpec(data, plot_config, 'sensor_combined',
+                             y_axis_label='[Hz]', title='Acceleration Power Spectral Density',
+                             plot_height='small', x_range=x_range)
+    data_plot.add_graph(['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
+                        ['X', 'Y', 'Z'])
+    if data_plot.finalize() is not None: plots.append(data_plot)
 
     # raw angular speed
     data_plot = DataPlot(data, plot_config, 'sensor_combined',
@@ -648,7 +708,6 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         lambda data: ('gyro_rad[2]', np.rad2deg(data['gyro_rad[2]']))],
                         colors3, ['X', 'Y', 'Z'])
     if data_plot.finalize() is not None: plots.append(data_plot)
-
 
 
     # magnetic field strength
@@ -704,20 +763,17 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         [lambda data: ('len_mag', np.sqrt(data['magnetometer_ga[0]']**2 +
                                           data['magnetometer_ga[1]']**2 +
                                           data['magnetometer_ga[2]']**2))],
-        colors2[0:1], ['Norm of Magnetic Field'])
+        colors3[0:1], ['Norm of Magnetic Field'])
     data_plot.change_dataset('actuator_controls_0')
     data_plot.add_graph([lambda data: ('thrust', data['control[3]'])],
-                        colors2[1:2], ['Thrust'])
+                        colors3[1:2], ['Thrust'])
+    if is_vtol:
+        data_plot.change_dataset('actuator_controls_1')
+        data_plot.add_graph([lambda data: ('thrust', data['control[3]'])],
+                            colors3[2:3], ['Thrust (Fixed-wing)'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
 
-    # Acceleration Spectrogram
-    data_plot = DataPlotSpec(data, plot_config, 'sensor_combined',
-                             y_axis_label='[Hz]', title='Acceleration Power Spectral Density',
-                             plot_height='small', x_range=x_range)
-    data_plot.add_graph(['accelerometer_m_s2[0]', 'accelerometer_m_s2[1]', 'accelerometer_m_s2[2]'],
-                        ['X', 'Y', 'Z'])
-    if data_plot.finalize() is not None: plots.append(data_plot)
 
     # power
     data_plot = DataPlot(data, plot_config, 'battery_status',
@@ -901,9 +957,15 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     plots.append(get_logged_messages(ulog.logged_messages, plot_width))
 
 
-    # perf & top output
+    # console messages, perf & top output
     top_data = ''
     perf_data = ''
+    console_messages = ''
+    if 'boot_console_output' in ulog.msg_info_multiple_dict:
+        console_output = ulog.msg_info_multiple_dict['boot_console_output'][0]
+        console_output = escape(''.join(console_output))
+        console_messages = '<p><pre>'+console_output+'</pre></p>'
+
     for state in ['pre', 'post']:
         if 'perf_top_'+state+'flight' in ulog.msg_info_multiple_dict:
             current_top_data = ulog.msg_info_multiple_dict['perf_top_'+state+'flight'][0]
@@ -915,6 +977,8 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             perf_data += '<p>'+state.capitalize()+' Flight:<br/><pre>'+flight_data+'</pre></p>'
 
     additional_data_html = ''
+    if len(console_messages) > 0:
+        additional_data_html += '<h5>Console Output</h5>'+console_messages
     if len(top_data) > 0:
         additional_data_html += '<h5>Processes</h5>'+top_data
     if len(perf_data) > 0:
@@ -922,14 +986,13 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     if len(additional_data_html) > 0:
         # hide by default & use a button to expand
         additional_data_html = '''
-<button class="btn btn-secondary" data-toggle="collapse" style="min-width:0;"
+<button id="show-additional-data-btn" class="btn btn-secondary" data-toggle="collapse" style="min-width:0;"
  data-target="#show-additional-data">Show additional Data</button>
 <div id="show-additional-data" class="collapse">
 {:}
 </div>
 '''.format(additional_data_html)
-        additional_data_div = Div(text=additional_data_html, width=int(plot_width*0.9))
-        plots.append(widgetbox(additional_data_div, width=int(plot_width*0.9)))
+        curdoc().template_variables['additional_info'] = additional_data_html
 
 
     curdoc().template_variables['plots'] = jinja_plot_data

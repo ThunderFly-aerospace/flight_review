@@ -129,7 +129,10 @@ class StatisticsPlots:
 
                 self._all_logs_dates.append(log.date)
                 if log.is_public == 1:
-                    self._public_logs_dates.append(log.date)
+                    if log.source == 'CI':
+                        self._ci_logs_dates.append(log.date)
+                    else:
+                        self._public_logs_dates.append(log.date)
                 else:
                     if log.source == 'CI':
                         self._ci_logs_dates.append(log.date)
@@ -138,7 +141,7 @@ class StatisticsPlots:
 
 
                 # LogsGenerated: public only
-                if log.is_public != 1:
+                if log.is_public != 1 or log.source == 'CI':
                     continue
 
                 cur.execute('select * from LogsGenerated where Id = ?', [log.log_id])
@@ -172,8 +175,10 @@ class StatisticsPlots:
                     continue
 
                 try:
-                    if int(log.sw_version[1:].split('.')[0]) > 10:
-                        print('Warning: %s with large version %s' % (log.log_id, log.sw_version))
+                    ver_major = int(log.sw_version[1:].split('.')[0])
+                    if ver_major > 2 or ver_major == 0:
+                        print('Warning: %s with large/small version %s' %
+                              (log.log_id, log.sw_version))
                         continue
                 except:
                     continue
