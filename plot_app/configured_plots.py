@@ -798,11 +798,11 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
 
 
     #Temperature
-    data_plot = DataPlot(data, plot_config, 'sensor_baro',
+    data_plot = DataPlot(data, plot_config, 'vehicle_air_data',
                          y_start=0, y_axis_label='[C]', title='Temperature',
                          plot_height='small', changed_params=changed_params,
                          x_range=x_range)
-    data_plot.add_graph(['temperature'], colors8[0:1],
+    data_plot.add_graph(['baro_temp_celcius'], colors8[0:1],
                         ['Baro temperature'])
     data_plot.change_dataset('sensor_accel')
     data_plot.add_graph(['temperature'], colors8[2:3],
