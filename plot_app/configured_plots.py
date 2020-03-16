@@ -377,6 +377,15 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page):
                         ['Frequency'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
+    # RPM sensor (new in master)
+    data_plot = DataPlot(data, plot_config, 'rpm',
+                         y_start=0, y_axis_label='[RPM]', title='Rotor Frequency Sensor',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    data_plot.add_graph(['indicated_frequency_rpm'], colors3[0:1],
+                        ['Frequency'])
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
     # manual control inputs
     # prefer the manual_control_setpoint topic. Old logs do not contain it
     if any(elem.name == 'manual_control_setpoint' for elem in data):

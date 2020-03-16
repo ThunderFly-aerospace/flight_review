@@ -305,7 +305,8 @@ def load_ulog_file(file_name):
                   'vehicle_local_position_groundtruth', 'vehicle_visual_odometry',
                   'vehicle_status', 'airspeed', 'manual_control_setpoint',
                   'rate_ctrl_status', 'vehicle_air_data',
-                  'vehicle_magnetometer', 'system_power', 'rotor_frequency']
+                  'vehicle_magnetometer', 'system_power', 'rotor_frequency', 'rpm' ]
+
     try:
         ulog = ULog(file_name, msg_filter)
     except FileNotFoundError:
