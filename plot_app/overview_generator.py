@@ -69,7 +69,10 @@ def generate_overview_img(ulog, log_id):
 
         print('Saving overview file '+ output_filename)
 
-    except:
+    except Exception as inst:
         # Ignore. Eg. if topic not found
         print('Error generating overview file: '+ output_filename+' - No GPS?')
+        print(type(inst))    # the exception instance
+        print(inst.args)     # arguments stored in .args
+        print(inst)
 
