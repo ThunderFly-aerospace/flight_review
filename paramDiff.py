@@ -1,6 +1,12 @@
-p1 = open("params1").read()
-p2 = open("params2").read()
-l = open("params.txt").read()
+import sys
+
+if not len(sys.argv) == 3:
+  print('Usage: python3 paramDiff.py [base-params] [new-params]')
+  exit()
+
+p1 = open(sys.argv[1]).read()
+p2 = open(sys.argv[2]).read()
+l = open("data/params.txt").read()
 
 param_list = [ i.split(',')[0] for i in l.split('\n') ][:-1]
 params_1 = [ i.split(',') for i in p1.split('\n')[:-1] if i.split(',')[0] in param_list ]
