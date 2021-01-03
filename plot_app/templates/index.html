@@ -19,32 +19,63 @@
 
 {% if has_position_data %}
 
-<!-- Leaflet map plot -->
+<!-- Mapy.cz map plot -->
 <div id="mapid"></div>
+
+<script type="text/javascript" src="https://api.mapy.cz/loader.js"></script>
+<script type="text/javascript">Loader.load();</script>
 
 <script>
 var pos_datas = {{ pos_datas }}; // list of [lat, lon] coordinates
 var pos_flight_modes = {{ pos_flight_modes }}; // list of [color, index of pos_datas]
 var waypoint_bounds = [];
 
-var mymap = L.map('mapid').setView([pos_datas[0][0], pos_datas[0][1]],15);
-L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
-    attribution: 'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
-    id: 'mapbox.satellite',
-    accessToken: '{{ mapbox_api_access_token }}'
-}).addTo(mymap);
+var center = SMap.Coords.fromWGS84(14.41790, 50.12655);
+var m = new SMap(JAK.gel("mapid"), center, 13);
+m.addDefaultLayer(SMap.DEF_BASE).enable();
+m.addDefaultControls();
 
-for(var j=0; j<pos_flight_modes.length - 1; j++) {
+var layer = new SMap.Layer.Geometry();
+m.addLayer(layer);
+layer.enable();
+
+for(var j=0; j<pos_flight_modes.length - 1; j++) 
+{
   var offset = -1;
   if(pos_flight_modes[j][1] == 0)
     offset = 0;
   var waypoint_polyline = pos_datas.slice(pos_flight_modes[j][1] + offset, pos_flight_modes[j+1][1]);
   var cur_flight_color = pos_flight_modes[j][0];
-  var polyline = L.polyline(waypoint_polyline, {color: cur_flight_color}).addTo(mymap);
-  Array.prototype.push.apply(waypoint_bounds, waypoint_polyline);
+
+  var points = waypoint_polyline.map(function(e) 
+                            { 
+                              return SMap.Coords.fromWGS84(e[1],e[0]);
+                            });
+
+  var options = {
+      color: cur_flight_color,
+      width: 5,
+      minDist: 0,
+       }
+
+  var polyline = new SMap.Geometry(SMap.GEOMETRY_POLYLINE, null, points, options);
+  layer.addGeometry(polyline);
+
 }
 
-mymap.fitBounds(pos_datas);
+
+//zoom to all
+var allpoints = pos_datas.map(function(e) 
+                            { 
+                              return SMap.Coords.fromWGS84(e[1],e[0]);
+                            });
+var alloptions = {
+      color: "#f00",
+      width: 5
+       }
+var allpolyline = new SMap.Geometry(SMap.GEOMETRY_POLYLINE, null, allpoints, options);
+var center=allpolyline.computeCenterZoom(m, false);
+m.setCenterZoom(center[0],center[1],false);
 
 </script>
 
