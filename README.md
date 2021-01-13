@@ -74,6 +74,11 @@ Initialize the Database as following:
   `config_user.ini` (untracked)
 - Any setting on `config_user.ini` has priority over
   `config_default.ini`
+- Run `pyhton3 ./setup_db.py` to initialize the SQLlite database.
+
+**Note:** `setup_db.py` can also be used to upgrade the database tables, for
+  instance when new entries are added (it automatically detects that).
+
 
 ## Usage
 
@@ -98,7 +103,13 @@ bokeh serve --show main.py`, to start without the html template).
 The whole web application is run with the `serve.py` script. Run `./serve.py -h`
 for further details.
 
+The application could serve the specific requested domain and port: 
+
+    python3 ./serve.py --port 8881 --allow-websocket-origin=dev.review.example.com
+
+
 ## Interactive Usage
+
 The plotting can also be used interative using a Jupyter Notebook. It
 requires python knowledge, but provides full control over what and how to plot
 with immediate feedback.
