@@ -2,16 +2,14 @@
 
 from html import escape
 
-from bokeh.layouts import widgetbox
+from bokeh.layouts import column
 from bokeh.models import Range1d
-from bokeh.models.widgets import Div, Button
+from bokeh.models.widgets import Button
 from bokeh.io import curdoc
-from scipy.interpolate import interp1d
 
 from config import *
 from helper import *
 from leaflet import ulog_to_polyline
-from pid_analysis import Trace, plot_pid_response
 from plotting import *
 from plotted_tables import (
     get_logged_messages, get_changed_parameters,
@@ -22,179 +20,6 @@ from plotted_tables import (
 #pylint: disable=cell-var-from-loop, undefined-loop-variable,
 #pylint: disable=consider-using-enumerate,too-many-statements
 
-def get_pid_analysis_plots(ulog, px4_ulog, db_data, link_to_main_plots):
-    """
-    get all bokeh plots shown on the PID analysis page
-    :return: list of bokeh plots
-    """
-    def _resample(time_array, data, desired_time):
-        """ resample data at a given time to a vector of desired_time """
-        data_f = interp1d(time_array, data, fill_value='extrapolate')
-        return data_f(desired_time)
-
-    page_intro = """
-<p>
-This page shows step response plots for the PID controller. The step
-response is an objective measure to evaluate the performance of a PID
-controller, i.e. if the tuning gains are appropriate. In particular, the
-following metrics can be read from the plots: response time, overshoot and
-settling time.
-</p>
-<p>
-The step response plots are based on <a href="https://github.com/Plasmatree/PID-Analyzer">
-PID-Analyzer</a>, originally written for Betaflight by Florian Melsheimer.
-Documentation with some examples can be found <a
-href="https://github.com/Plasmatree/PID-Analyzer/wiki/Influence-of-parameters">here</a>.
-</p>
-<p>
-Note: this page is somewhat experimental and if you have interesting results or
-other inputs, please do not hesitate to contact
-<a href="mailto:beat@px4.io">beat@px4.io</a>.
-</p>
-<p>
-The analysis may take a while...
-</p>
-    """
-    curdoc().template_variables['title_html'] = get_heading_html(
-        ulog, px4_ulog, db_data, None, [('Open Main Plots', link_to_main_plots)],
-        'PID Analysis') + page_intro
-
-    plots = []
-    data = ulog.data_list
-    flight_mode_changes = get_flight_mode_changes(ulog)
-    x_range_offset = (ulog.last_timestamp - ulog.start_timestamp) * 0.05
-    x_range = Range1d(ulog.start_timestamp - x_range_offset, ulog.last_timestamp + x_range_offset)
-
-    # COMPATIBILITY support for old logs
-    if any(elem.name == 'vehicle_angular_velocity' for elem in data):
-        rate_topic_name = 'vehicle_angular_velocity'
-        rate_field_names = ['xyz[0]', 'xyz[1]', 'xyz[2]']
-    else: # old
-        rate_topic_name = 'rate_ctrl_status'
-        rate_field_names = ['rollspeed', 'pitchspeed', 'yawspeed']
-
-    # required PID response data
-    pid_analysis_error = False
-    try:
-        rate_data = ulog.get_dataset(rate_topic_name)
-        gyro_time = rate_data.data['timestamp']
-
-        vehicle_attitude = ulog.get_dataset('vehicle_attitude')
-        attitude_time = vehicle_attitude.data['timestamp']
-        vehicle_rates_setpoint = ulog.get_dataset('vehicle_rates_setpoint')
-        vehicle_attitude_setpoint = ulog.get_dataset('vehicle_attitude_setpoint')
-        actuator_controls_0 = ulog.get_dataset('actuator_controls_0')
-        throttle = _resample(actuator_controls_0.data['timestamp'],
-                             actuator_controls_0.data['control[3]'] * 100, gyro_time)
-        time_seconds = gyro_time / 1e6
-    except (KeyError, IndexError, ValueError) as error:
-        print(type(error), ":", error)
-        pid_analysis_error = True
-        div = Div(text="<p><b>Error</b>: missing topics or data for PID analysis "
-                  "(required topics: vehicle_angular_velocity, vehicle_rates_setpoint, "
-                  "vehicle_attitude, vehicle_attitude_setpoint and "
-                  "actuator_controls_0).</p>", width=int(plot_width*0.9))
-        plots.append(widgetbox(div, width=int(plot_width*0.9)))
-
-    for index, axis in enumerate(['roll', 'pitch', 'yaw']):
-        axis_name = axis.capitalize()
-        # rate
-        data_plot = DataPlot(data, plot_config, 'actuator_controls_0',
-                             y_axis_label='[deg/s]', title=axis_name+' Angular Rate',
-                             plot_height='small',
-                             x_range=x_range)
-
-        thrust_max = 200
-        actuator_controls = data_plot.dataset
-        if actuator_controls is None: # do not show the rate plot if actuator_controls is missing
-            continue
-        time_controls = actuator_controls.data['timestamp']
-        thrust = actuator_controls.data['control[3]'] * thrust_max
-        # downsample if necessary
-        max_num_data_points = 4.0*plot_config['plot_width']
-        if len(time_controls) > max_num_data_points:
-            step_size = int(len(time_controls) / max_num_data_points)
-            time_controls = time_controls[::step_size]
-            thrust = thrust[::step_size]
-        if len(time_controls) > 0:
-            # make sure the polygon reaches down to 0
-            thrust = np.insert(thrust, [0, len(thrust)], [0, 0])
-            time_controls = np.insert(time_controls, [0, len(time_controls)],
-                                      [time_controls[0], time_controls[-1]])
-
-        p = data_plot.bokeh_plot
-        p.patch(time_controls, thrust, line_width=0, fill_color='#555555',
-                fill_alpha=0.4, alpha=0, legend='Thrust [0, {:}]'.format(thrust_max))
-
-        data_plot.change_dataset(rate_topic_name)
-        data_plot.add_graph([lambda data: ("rate"+str(index),
-                                           np.rad2deg(data[rate_field_names[index]]))],
-                            colors3[0:1], [axis_name+' Rate Estimated'], mark_nan=True)
-        data_plot.change_dataset('vehicle_rates_setpoint')
-        data_plot.add_graph([lambda data: (axis, np.rad2deg(data[axis]))],
-                            colors3[1:2], [axis_name+' Rate Setpoint'],
-                            mark_nan=True, use_step_lines=True)
-        axis_letter = axis[0].upper()
-        rate_int_limit = '(*100)'
-        # this param is MC/VTOL only (it will not exist on FW)
-        rate_int_limit_param = 'MC_' + axis_letter + 'R_INT_LIM'
-        if rate_int_limit_param in ulog.initial_parameters:
-            rate_int_limit = '[-{0:.0f}, {0:.0f}]'.format(
-                ulog.initial_parameters[rate_int_limit_param]*100)
-        data_plot.change_dataset('rate_ctrl_status')
-        data_plot.add_graph([lambda data: (axis, data[axis+'speed_integ']*100)],
-                            colors3[2:3], [axis_name+' Rate Integral '+rate_int_limit])
-        plot_flight_modes_background(data_plot, flight_mode_changes)
-
-        if data_plot.finalize() is not None: plots.append(data_plot.bokeh_plot)
-
-        # PID response
-        if not pid_analysis_error:
-            try:
-                gyro_rate = np.rad2deg(rate_data.data[rate_field_names[index]])
-                setpoint = _resample(vehicle_rates_setpoint.data['timestamp'],
-                                     np.rad2deg(vehicle_rates_setpoint.data[axis]),
-                                     gyro_time)
-                trace = Trace(axis, time_seconds, gyro_rate, setpoint, throttle)
-                plots.append(plot_pid_response(trace, ulog.data_list, plot_config).bokeh_plot)
-            except Exception as e:
-                print(type(e), axis, ":", e)
-                div = Div(text="<p><b>Error</b>: PID analysis failed. Possible "
-                          "error causes are: logged data rate is too low, there "
-                          "is not enough motion for the analysis or simply a bug "
-                          "in the code.</p>", width=int(plot_width*0.9))
-                plots.insert(0, widgetbox(div, width=int(plot_width*0.9)))
-                pid_analysis_error = True
-
-    # attitude
-    if not pid_analysis_error:
-        throttle = _resample(actuator_controls_0.data['timestamp'],
-                             actuator_controls_0.data['control[3]'] * 100, attitude_time)
-        time_seconds = attitude_time / 1e6
-    # don't plot yaw, as yaw is mostly controlled directly by rate
-    for index, axis in enumerate(['roll', 'pitch']):
-        axis_name = axis.capitalize()
-
-        # PID response
-        if not pid_analysis_error:
-            try:
-                attitude_estimated = np.rad2deg(vehicle_attitude.data[axis])
-                setpoint = _resample(vehicle_attitude_setpoint.data['timestamp'],
-                                     np.rad2deg(vehicle_attitude_setpoint.data[axis+'_d']),
-                                     attitude_time)
-                trace = Trace(axis, time_seconds, attitude_estimated, setpoint, throttle)
-                plots.append(plot_pid_response(trace, ulog.data_list, plot_config,
-                                               'Angle').bokeh_plot)
-            except Exception as e:
-                print(type(e), axis, ":", e)
-                div = Div(text="<p><b>Error</b>: PID analysis failed. Possible "
-                          "error causes are: logged data rate is too low, there "
-                          "is not enough motion for the analysis or simply a bug "
-                          "in the code.</p>", width=int(plot_width*0.9))
-                plots.insert(0, widgetbox(div, width=int(plot_width*0.9)))
-                pid_analysis_error = True
-
-    return plots
 
 
 def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
@@ -217,7 +42,9 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             if 'voltage5V_v' in topic.data:     # old (prior to PX4/Firmware:213aa93)
                 topic.data['voltage5v_v'] = topic.data.pop('voltage5V_v')
             if 'voltage3V3_v' in topic.data:    # old (prior to PX4/Firmware:213aa93)
-                topic.data['voltage3v3_v'] = topic.data.pop('voltage3V3_v')
+                topic.data['sensors3v3[0]'] = topic.data.pop('voltage3V3_v')
+            if 'voltage3v3_v' in topic.data:
+                topic.data['sensors3v3[0]'] = topic.data.pop('voltage3v3_v')
 
     if any(elem.name == 'vehicle_angular_velocity' for elem in data):
         rate_estimated_topic_name = 'vehicle_angular_velocity'
@@ -227,6 +54,10 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         rate_estimated_topic_name = 'vehicle_attitude'
         rate_groundtruth_topic_name = 'vehicle_attitude_groundtruth'
         rate_field_names = ['rollspeed', 'pitchspeed', 'yawspeed']
+    if any(elem.name == 'manual_control_switches' for elem in data):
+        manual_control_switches_topic = 'manual_control_switches'
+    else: # old
+        manual_control_switches_topic = 'manual_control_setpoint'
 
     # initialize flight mode changes
     flight_mode_changes = get_flight_mode_changes(ulog)
@@ -238,12 +69,23 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         cur_dataset = ulog.get_dataset('vehicle_status')
         if np.amax(cur_dataset.data['is_vtol']) == 1:
             is_vtol = True
-            vtol_states = cur_dataset.list_value_changes('in_transition_mode')
             # find mode after transitions (states: 1=transition, 2=FW, 3=MC)
             if 'vehicle_type' in cur_dataset.data:
                 vehicle_type_field = 'vehicle_type'
                 vtol_state_mapping = {2: 2, 1: 3}
+                vehicle_type = cur_dataset.data['vehicle_type']
+                in_transition_mode = cur_dataset.data['in_transition_mode']
+                vtol_states = []
+                for i in range(len(vehicle_type)):
+                    # a VTOL can change state also w/o in_transition_mode set
+                    # (e.g. in Manual mode)
+                    if i == 0 or in_transition_mode[i-1] != in_transition_mode[i] or \
+                        vehicle_type[i-1] != vehicle_type[i]:
+                        vtol_states.append((cur_dataset.data['timestamp'][i],
+                                            in_transition_mode[i]))
+
             else: # COMPATIBILITY: old logs (https://github.com/PX4/Firmware/pull/11918)
+                vtol_states = cur_dataset.list_value_changes('in_transition_mode')
                 vehicle_type_field = 'is_rotary_wing'
                 vtol_state_mapping = {0: 2, 1: 3}
             for i in range(len(vtol_states)):
@@ -506,8 +348,19 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             data_plot.add_graph([lambda data: ('groundspeed_estimated',
                                                np.sqrt(data['vel_n']**2 + data['vel_e']**2))],
                                 colors8[0:1], ['Ground Speed Estimated'])
-            data_plot.change_dataset('airspeed')
-            data_plot.add_graph(['indicated_airspeed_m_s'], colors8[1:2], ['Airspeed Indicated'])
+            if any(elem.name == 'airspeed_validated' for elem in data):
+                airspeed_validated = ulog.get_dataset('airspeed_validated')
+                data_plot.change_dataset('airspeed_validated')
+                if np.amax(airspeed_validated.data['airspeed_sensor_measurement_valid']) == 1:
+                    data_plot.add_graph(['equivalent_airspeed_m_s'], colors8[1:2],
+                                        ['Equivalent Airspeed'])
+                else:
+                    data_plot.add_graph(['equivalent_ground_minus_wind_m_s'], colors8[1:2],
+                                        ['Ground Minus Wind'])
+            else:
+                data_plot.change_dataset('airspeed')
+                data_plot.add_graph(['indicated_airspeed_m_s'], colors8[1:2],
+                                    ['Indicated Airspeed'])
             data_plot.change_dataset('vehicle_gps_position')
             data_plot.add_graph(['vel_m_s'], colors8[2:3], ['Ground Speed (from GPS)'])
             data_plot.change_dataset('tecs_status')
@@ -537,13 +390,13 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                              title='Manual Control Inputs (Radio or Joystick)',
                              plot_height='small', y_range=Range1d(-1.1, 1.1),
                              changed_params=changed_params, x_range=x_range)
-        data_plot.add_graph(['y', 'x', 'r', 'z',
-                             lambda data: ('mode_slot', data['mode_slot']/6),
-                             'aux1', 'aux2',
-                             lambda data: ('kill_switch', data['kill_switch'] == 1)],
-                            colors8,
+        data_plot.add_graph(['y', 'x', 'r', 'z', 'aux1', 'aux2'], colors8[0:6],
                             ['Y / Roll', 'X / Pitch', 'Yaw', 'Throttle [0, 1]',
-                             'Flight Mode', 'Aux1', 'Aux2', 'Kill Switch'])
+                             'Aux1', 'Aux2'])
+        data_plot.change_dataset(manual_control_switches_topic)
+        data_plot.add_graph([lambda data: ('mode_slot', data['mode_slot']/6),
+                             lambda data: ('kill_switch', data['kill_switch'] == 1)],
+                            colors8[6:8], ['Flight Mode', 'Kill Switch'])
         # TODO: add RTL switch and others? Look at params which functions are mapped?
         plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
@@ -588,10 +441,14 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     data_plot.add_graph(['control[0]', 'control[1]', 'control[2]'],
                         colors3, ['Roll', 'Pitch', 'Yaw'])
     if not data_plot.had_error:
-        if 'MC_DTERM_CUTOFF' in ulog.initial_parameters:
+        if 'MC_DTERM_CUTOFF' in ulog.initial_parameters: # COMPATIBILITY
             data_plot.mark_frequency(
                 ulog.initial_parameters['MC_DTERM_CUTOFF'],
                 'MC_DTERM_CUTOFF')
+        if 'IMU_DGYRO_CUTOFF' in ulog.initial_parameters:
+            data_plot.mark_frequency(
+                ulog.initial_parameters['IMU_DGYRO_CUTOFF'],
+                'IMU_DGYRO_CUTOFF')
         if 'IMU_GYRO_CUTOFF' in ulog.initial_parameters:
             data_plot.mark_frequency(
                 ulog.initial_parameters['IMU_GYRO_CUTOFF'],
@@ -616,12 +473,12 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     data_plot = DataPlot(data, plot_config, 'actuator_outputs',
                          y_start=0, title='Actuator Outputs (Main)', plot_height='small',
                          changed_params=changed_params, x_range=x_range)
-    num_actuator_outputs = 8
+    num_actuator_outputs = 16
     if data_plot.dataset:
         max_outputs = np.amax(data_plot.dataset.data['noutputs'])
         if max_outputs < num_actuator_outputs: num_actuator_outputs = max_outputs
-    data_plot.add_graph(['output['+str(i)+']' for i in
-                         range(num_actuator_outputs)], colors8[0:num_actuator_outputs],
+    data_plot.add_graph(['output['+str(i)+']' for i in range(num_actuator_outputs)],
+                        [colors8[i % 8] for i in range(num_actuator_outputs)],
                         ['Output '+str(i) for i in range(num_actuator_outputs)], mark_nan=True)
     plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
@@ -632,7 +489,7 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                          y_start=0, title='Actuator Outputs (AUX)', plot_height='small',
                          changed_params=changed_params, topic_instance=1,
                          x_range=x_range)
-    num_actuator_outputs = 8
+    num_actuator_outputs = 16
     # only plot if at least one of the outputs is not constant
     all_constant = True
     if data_plot.dataset:
@@ -644,8 +501,8 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             if not np.all(output_data == output_data[0]):
                 all_constant = False
     if not all_constant:
-        data_plot.add_graph(['output['+str(i)+']' for i in
-                             range(num_actuator_outputs)], colors8[0:num_actuator_outputs],
+        data_plot.add_graph(['output['+str(i)+']' for i in range(num_actuator_outputs)],
+                            [colors8[i % 8] for i in range(num_actuator_outputs)],
                             ['Output '+str(i) for i in range(num_actuator_outputs)], mark_nan=True)
         plot_flight_modes_background(data_plot, flight_mode_changes, vtol_states)
 
@@ -692,6 +549,59 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                         colors3, ['X', 'Y', 'Z'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
+    # FIFO accel
+    if add_virtual_fifo_topic_data(ulog, 'sensor_accel_fifo'):
+        # Raw data
+        data_plot = DataPlot(data, plot_config, 'sensor_accel_fifo_virtual',
+                             y_axis_label='[m/s^2]', title='Raw Acceleration (FIFO)',
+                             plot_height='small', changed_params=changed_params,
+                             x_range=x_range)
+        data_plot.add_graph(['x', 'y', 'z'], colors3, ['X', 'Y', 'Z'])
+        if data_plot.finalize() is not None: plots.append(data_plot)
+
+        # power spectral density
+        data_plot = DataPlotSpec(data, plot_config, 'sensor_accel_fifo_virtual',
+                                 y_axis_label='[Hz]',
+                                 title='Acceleration Power Spectral Density (FIFO)',
+                                 plot_height='normal', x_range=x_range)
+        data_plot.add_graph(['x', 'y', 'z'], ['X', 'Y', 'Z'])
+        if data_plot.finalize() is not None: plots.append(data_plot)
+
+        # sampling regularity
+        data_plot = DataPlot(data, plot_config, 'sensor_accel_fifo', y_range=Range1d(0, 25e3),
+                             y_axis_label='[us]',
+                             title='Sampling Regularity of Sensor Data (FIFO)', plot_height='small',
+                             changed_params=changed_params, x_range=x_range)
+        sensor_accel_fifo = ulog.get_dataset('sensor_accel_fifo').data
+        sampling_diff = np.diff(sensor_accel_fifo['timestamp'])
+        min_sampling_diff = np.amin(sampling_diff)
+        plot_dropouts(data_plot.bokeh_plot, ulog.dropouts, min_sampling_diff)
+        data_plot.add_graph([lambda data: ('timediff', np.append(sampling_diff, 0))],
+                            [colors3[2]], ['delta t (between 2 logged samples)'])
+        if data_plot.finalize() is not None: plots.append(data_plot)
+
+    # FIFO gyro
+    if add_virtual_fifo_topic_data(ulog, 'sensor_gyro_fifo'):
+        # Raw data
+        data_plot = DataPlot(data, plot_config, 'sensor_gyro_fifo_virtual',
+                             y_axis_label='[m/s^2]', title='Raw Gyro (FIFO)',
+                             plot_height='small', changed_params=changed_params,
+                             x_range=x_range)
+        data_plot.add_graph(['x', 'y', 'z'], colors3, ['X', 'Y', 'Z'])
+        data_plot.add_graph([
+            lambda data: ('x', np.rad2deg(data['x'])),
+            lambda data: ('y', np.rad2deg(data['y'])),
+            lambda data: ('z', np.rad2deg(data['z']))],
+                            colors3, ['X', 'Y', 'Z'])
+        if data_plot.finalize() is not None: plots.append(data_plot)
+
+        # power spectral density
+        data_plot = DataPlotSpec(data, plot_config, 'sensor_gyro_fifo_virtual',
+                                 y_axis_label='[Hz]', title='Gyro Power Spectral Density (FIFO)',
+                                 plot_height='normal', x_range=x_range)
+        data_plot.add_graph(['x', 'y', 'z'], ['X', 'Y', 'Z'])
+        if data_plot.finalize() is not None: plots.append(data_plot)
+
 
     # magnetic field strength
     data_plot = DataPlot(data, plot_config, magnetometer_ga_topic,
@@ -709,8 +619,8 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
                          y_start=0, y_axis_label='[m]', title='Distance Sensor',
                          plot_height='small', changed_params=changed_params,
                          x_range=x_range)
-    data_plot.add_graph(['current_distance', 'covariance'], colors3[0:2],
-                        ['Distance', 'Covariance'])
+    data_plot.add_graph(['current_distance', 'variance'], colors3[0:2],
+                        ['Distance', 'Variance'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
 
@@ -775,9 +685,9 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         if 'voltage5v_v' in data_plot.dataset.data and \
                         np.amax(data_plot.dataset.data['voltage5v_v']) > 0.0001:
             data_plot.add_graph(['voltage5v_v'], colors8[7:8], ['5 V'])
-        if 'voltage3v3_v' in data_plot.dataset.data and \
-                        np.amax(data_plot.dataset.data['voltage3v3_v']) > 0.0001:
-            data_plot.add_graph(['voltage3v3_v'], colors8[5:6], ['3.3 V'])
+        if 'sensors3v3[0]' in data_plot.dataset.data and \
+                        np.amax(data_plot.dataset.data['sensors3v3[0]']) > 0.0001:
+            data_plot.add_graph(['sensors3v3[0]'], colors8[5:6], ['3.3 V'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
 
@@ -911,7 +821,7 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
     jinja_plot_data = []
     for i in range(len(plots)):
         if plots[i] is None:
-            plots[i] = widgetbox(param_changes_button, width=int(plot_width * 0.99))
+            plots[i] = column(param_changes_button, width=int(plot_width * 0.99))
         if isinstance(plots[i], DataPlot):
             if plots[i].param_change_label is not None:
                 param_change_labels.append(plots[i].param_change_label)
@@ -948,7 +858,7 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
 #            '<th>Number of data points</th><th>Total bytes</th></tr>' + ''.join(
 #            ['<tr><td>'+'</td><td>'.join(list(x))+'</td></tr>' for x in table_text]) + '</table>'
 #    topics_div = Div(text=topics_info, width=int(plot_width*0.9))
-#    plots.append(widgetbox(topics_div, width=int(plot_width*0.9)))
+#    plots.append(column(topics_div, width=int(plot_width*0.9)))
 
 
     # log messages
@@ -973,6 +883,10 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             current_perf_data = ulog.msg_info_multiple_dict['perf_counter_'+state+'flight'][0]
             flight_data = escape('\n'.join(current_perf_data))
             perf_data += '<p>'+state.capitalize()+' Flight:<br/><pre>'+flight_data+'</pre></p>'
+    if 'perf_top_watchdog' in ulog.msg_info_multiple_dict:
+        current_top_data = ulog.msg_info_multiple_dict['perf_top_watchdog'][0]
+        flight_data = escape('\n'.join(current_top_data))
+        top_data += '<p>Watchdog:<br/><pre>'+flight_data+'</pre></p>'
 
     additional_data_html = ''
     if len(console_messages) > 0:
