@@ -14,7 +14,7 @@ from config import plot_color_red
 from helper import (
     get_default_parameters, get_airframe_name,
     get_total_flight_time, error_labels_table,
-    get_event_parser
+    get_event_parser, load_ulog_file
     )
 
 #pylint: disable=consider-using-enumerate,too-many-statements
@@ -532,6 +532,79 @@ def get_changed_parameters(ulog, plot_width):
     data_table = DataTable(source=source, columns=columns, width=plot_width,
                            height=300, sortable=False, selectable=False)
     div = Div(text="""<b>Non-default Parameters</b> (except RC and sensor calibration)""",
+              width=int(plot_width/2))
+    return column(div, data_table, width=plot_width)
+
+def get_param_diff(ulog, plot_width):
+    """
+    get a bokeh column object with parameters diff
+    """
+    param_names = []
+    param_base = []
+    param_current = []
+    param_colors = []
+
+    params_1 = load_ulog_file('/home/jankott/flight_review/data/log_files/f6caa8e8-a3c4-49b1-9f96-1ce09a726f9e.ulg').initial_parameters
+    params_2 = ulog.initial_parameters
+
+    identical = []
+    ref_index = 0
+    for param in dict(params_1).items():
+        if param in params_2.items():
+            identical.append(param)
+            del params_1[param[0]]
+            del params_2[param[0]]
+
+    added = []
+    for param in dict(params_2).items():
+        if param[0] not in params_1.keys():
+            added.append(param)
+            del params_2[param[0]]
+
+    removed = []
+    for param in dict(params_1).items():
+        if param[0] not in params_2.keys():
+            removed.append(param)
+            del params_1[param[0]]
+
+    changed = []
+    for param in params_1.keys():
+        changed.append([param, params_1[param], params_2[param]])
+
+    for param in removed:
+        param_names.append(str(param[0]))
+        param_base.append(str(param[1]))
+        param_current.append('')
+        param_colors.append('red')
+    for param in added:
+        param_names.append(str(param[0]))
+        param_current.append(str(param[1]))
+        param_base.append('')
+        param_colors.append('green')
+    for param in changed:
+        param_names.append(str(param[0]))
+        param_base.append(str(param[1]))
+        param_current.append(str(param[2]))
+        param_colors.append('orange')
+
+    param_data = dict(
+        names=param_names,
+        base=param_base,
+        current=param_current,
+        colors=param_colors)
+    source = ColumnDataSource(param_data)
+    formatter = HTMLTemplateFormatter(template='<font color="<%= colors %>"><%= value %></font>')
+    columns = [
+        TableColumn(field="names", title="Name",
+                    width=int(plot_width*0.2), sortable=False),
+        TableColumn(field="base", title="base",
+                    width=int(plot_width*0.15), sortable=False, formatter=formatter),
+        TableColumn(field="current", title="current",
+                    width=int(plot_width*0.15), sortable=False, formatter=formatter),
+        ]
+    data_table = DataTable(source=source, columns=columns, width=plot_width,
+                           height=300, sortable=False, selectable=False)
+    div = Div(text="""<b>Parameters diff</b>""",
               width=int(plot_width/2))
     return column(div, data_table, width=plot_width)
 
