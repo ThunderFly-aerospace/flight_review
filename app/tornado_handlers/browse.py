@@ -34,6 +34,7 @@ class BrowseDataRetrievalHandler(tornado.web.RequestHandler):
         data_start = int(self.get_argument('start'))
         data_length = int(self.get_argument('length'))
         draw_counter = int(self.get_argument('draw'))
+        compare_base = self.get_argument('compare', '')
 
         json_output = dict()
         json_output['draw'] = draw_counter
@@ -57,7 +58,8 @@ class BrowseDataRetrievalHandler(tornado.web.RequestHandler):
                         'LogsGenerated.StartTime',
                         '',#Rating
                         'LogsGenerated.NumLoggedErrors',
-                        '' #FlightModes
+                        '', #FlightModes
+                        '' #compare base
                         ]
         if ordering_col[order_ind] != '':
             sql_order = ' ORDER BY ' + ordering_col[order_ind]
@@ -169,9 +171,13 @@ class BrowseDataRetrievalHandler(tornado.web.RequestHandler):
                 image_col = '<img class="map_overview" src="/overview_img/'
                 image_col += log_id+'.png" alt="Overview Image Load Failed" height=50/>'
 
+            compareBaseButton='<input type=button onClick=setCompare("'+log_id+'") value="Compare" />'
+            if log_id==compare_base:
+                compareBaseButton='Selected'
+
             return Columns([
                 counter,
-                '<a href="plot_app?log='+log_id+'">'+log_date+'</a>',
+                '<a href="plot_app?log='+log_id+'&compare='+compare_base+'">'+log_date+'</a>',
                 image_col,
                 description,
                 db_data.mav_type,
@@ -182,7 +188,8 @@ class BrowseDataRetrievalHandler(tornado.web.RequestHandler):
                 start_time_str,
                 db_data.rating_str(),
                 db_data.num_logged_errors,
-                flight_modes
+                flight_modes,
+                compareBaseButton,
             ], search_only_columns)
 
         # need to fetch all here, because we will do more SQL calls while
