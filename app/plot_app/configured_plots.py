@@ -14,7 +14,7 @@ from plotting import *
 from plotted_tables import (
     get_logged_messages, get_changed_parameters,
     get_info_table_html, get_heading_html, get_error_labels_html,
-    get_hardfault_html, get_corrupt_log_html
+    get_hardfault_html, get_corrupt_log_html, get_param_diff
     )
 
 #pylint: disable=cell-var-from-loop, undefined-loop-variable,
@@ -23,7 +23,7 @@ from plotted_tables import (
 
 
 def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
-                   link_to_pid_analysis_page):
+                   link_to_pid_analysis_page,compare_log_filename):
     """ create a list of bokeh plots (and widgets) to show """
 
     plots = []
@@ -139,14 +139,15 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
         if data_plot.finalize() is not None:
             plots.append(data_plot.bokeh_plot)
 
-            # Leaflet Map
-            try:
-                pos_datas, flight_modes = ulog_to_polyline(ulog, flight_mode_changes)
-                curdoc().template_variables['pos_datas'] = pos_datas
-                curdoc().template_variables['pos_flight_modes'] = flight_modes
-            except:
-                pass
-            curdoc().template_variables['has_position_data'] = True
+    if any(elem.name == 'vehicle_gps_position' for elem in ulog.data_list):
+        # Leaflet Map
+        try:
+            pos_datas, flight_modes = ulog_to_polyline(ulog, flight_mode_changes)
+            curdoc().template_variables['pos_datas'] = pos_datas
+            curdoc().template_variables['pos_flight_modes'] = flight_modes
+        except:
+            pass
+        curdoc().template_variables['has_position_data'] = True
 
     # initialize parameter changes
     changed_params = None
@@ -913,6 +914,10 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
 
     # changed parameters
     plots.append(get_changed_parameters(ulog, plot_width))
+
+    # parameters diff
+    if len(compare_log_filename)!=0:
+        plots.append(get_param_diff(ulog,compare_log_filename, plot_width))
 
 
 
