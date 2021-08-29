@@ -538,7 +538,7 @@ def get_changed_parameters(ulog, plot_width):
               width=int(plot_width/2))
     return column(div, data_table, width=plot_width)
 
-def get_param_diff(ulog, plot_width):
+def get_param_diff(ulog, compare_ulog_filename, plot_width):
     """
     get a bokeh column object with parameters diff
     """
@@ -547,7 +547,7 @@ def get_param_diff(ulog, plot_width):
     param_current = []
     param_colors = []
 
-    params_1 = load_ulog_file('/home/jankott/flight_review/data/log_files/f6caa8e8-a3c4-49b1-9f96-1ce09a726f9e.ulg').initial_parameters
+    params_1 = load_ulog_file(compare_ulog_filename).initial_parameters
     params_2 = ulog.initial_parameters
 
     identical = []

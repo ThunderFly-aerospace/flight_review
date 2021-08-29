@@ -28,6 +28,7 @@
             <th>Rating</th>
             <th>Errors</th>
             <th>Flight Modes</th>
+            <th>Compare Base</th>
         </tr>
     </thead>
     <tbody>
@@ -49,8 +50,16 @@
 
 <script type="text/javascript">
 
+    var table;
+    var compareBase="";
+    function setCompare(compare)
+    {
+        compareBase=compare;   
+        table.ajax.reload();
+    }
+
     $(document).ready(function () {
-        $('#logs_table').DataTable({
+        table=$('#logs_table').DataTable({
 {% if initial_search %}
         "search": {
         "search": {{ initial_search }}
@@ -73,7 +82,8 @@
         { "width": "10%" }, /* start time */
         { "orderable": false, "width": "13%" }, /* rating */
         null,
-        { "orderable": false, "width": "11%" } /* flight modes */
+        { "orderable": false, "width": "11%" }, /* flight modes */
+        null
     ],
 
         "language": {
@@ -81,9 +91,9 @@
     },
 
         "serverSide": true,
-        "ajax": "browse_data_retrieval",
+        "ajax": {"url":"browse_data_retrieval","data":function ( d ) {return $.extend( {}, d, {"compare":compareBase});}}
     });
-    var table = $('#logs_table').DataTable();
+    table = $('#logs_table').DataTable();
     table.on('xhr', function () {
         try {
             var table = $('#logs_table').DataTable();
