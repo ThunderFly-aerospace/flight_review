@@ -547,45 +547,68 @@ def get_param_diff(ulog, compare_ulog_filename, plot_width):
     params_1 = load_ulog_file(compare_ulog_filename).initial_parameters
     params_2 = ulog.initial_parameters
 
-    identical = []
-    ref_index = 0
-    for param in dict(params_1).items():
-        if param in params_2.items():
-            identical.append(param)
-            del params_1[param[0]]
-            del params_2[param[0]]
 
-    added = []
-    for param in dict(params_2).items():
-        if param[0] not in params_1.keys():
-            added.append(param)
-            del params_2[param[0]]
 
-    removed = []
-    for param in dict(params_1).items():
-        if param[0] not in params_2.keys():
-            removed.append(param)
-            del params_1[param[0]]
+    param_names=list(set(list(params_1.keys())+list(params_2.keys())))
+    param_names.sort()
+    print(param_names)
 
-    changed = []
-    for param in params_1.keys():
-        changed.append([param, params_1[param], params_2[param]])
+    for p in param_names:    
+        b=''
+        c=''
+        if p in params_1:
+            b=params_1[p]
 
-    for param in removed:
-        param_names.append(str(param[0]))
-        param_base.append(str(param[1]))
-        param_current.append('')
-        param_colors.append('red')
-    for param in added:
-        param_names.append(str(param[0]))
-        param_current.append(str(param[1]))
-        param_base.append('')
-        param_colors.append('green')
-    for param in changed:
-        param_names.append(str(param[0]))
-        param_base.append(str(param[1]))
-        param_current.append(str(param[2]))
-        param_colors.append('orange')
+        if p in params_2:
+            c=params_2[p]
+
+        param_base.append(b)
+        param_current.append(c)
+        if c==b:
+            param_colors.append('green')
+        else:
+            param_colors.append('red')
+    
+
+    #identical = []
+    #ref_index = 0
+    #for param in dict(params_1).items():
+    #    if param in params_2.items():
+    #        identical.append(param)
+    #        del params_1[param[0]]
+    #        del params_2[param[0]]
+
+    #added = []
+    #for param in dict(params_2).items():
+    #    if param[0] not in params_1.keys():
+    #        added.append(param)
+    #        del params_2[param[0]]
+
+    #removed = []
+    #for param in dict(params_1).items():
+    #    if param[0] not in params_2.keys():
+    #        removed.append(param)
+    #        del params_1[param[0]]
+
+    #changed = []
+    #for param in params_1.keys():
+    #    changed.append([param, params_1[param], params_2[param]])
+
+    #for param in removed:
+    #    param_names.append(str(param[0]))
+    #    param_base.append(str(param[1]))
+    #    param_current.append('')
+    #    param_colors.append('red')
+    #for param in added:
+    #    param_names.append(str(param[0]))
+    #    param_current.append(str(param[1]))
+    #    param_base.append('')
+    #    param_colors.append('green')
+    #for param in changed:
+    #    param_names.append(str(param[0]))
+    #    param_base.append(str(param[1]))
+    #    param_current.append(str(param[2]))
+    #    param_colors.append('orange')
 
     param_data = dict(
         names=param_names,
