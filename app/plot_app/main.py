@@ -93,6 +93,7 @@ else:
     ulog_file_name = os.path.join(get_log_filepath(), ulog_file_name)
     error_message = ''
     log_id = ''
+    compare_log_id = ''
 
     try:
 
@@ -233,6 +234,8 @@ else:
                     compare_log_id = str(compare_log_args[0], 'utf-8')
                     if len(compare_log_id)!=0:
                         compare_log_filename = get_log_filename(compare_log_id)
+
+            curdoc().template_variables['compare_log_id'] = compare_log_id
 
             try:
                 plots = generate_plots(ulog, px4_ulog, db_data, vehicle_data,
