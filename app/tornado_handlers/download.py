@@ -25,6 +25,9 @@ from .common import CustomHTTPError, TornadoRequestHandlerBase
 
 #pylint: disable=abstract-method, unused-argument
 
+from plot_app.diffparams import diffparams
+
+
 class DownloadHandler(TornadoRequestHandlerBase):
     """ Download log file Tornado request handler """
 
@@ -158,41 +161,25 @@ class DownloadHandler(TornadoRequestHandlerBase):
                     pass
 
         elif download_type == '4': # download parameters diff
-            params_1 = load_ulog_file('/home/jankott/flight_review/data/log_files/f6caa8e8-a3c4-49b1-9f96-1ce09a726f9e.ulg').initial_parameters
+            compare_log_id = self.get_argument('compare')
+            if not validate_log_id(compare_log_id):
+                raise tornado.web.HTTPError(400, 'Invalid Parameter - select compare on browse first')
+            compare_log_file_name = get_log_filename(compare_log_id)
+
+            params_1 = load_ulog_file(compare_log_file_name).initial_parameters
             params_2 = load_ulog_file(log_file_name).initial_parameters
 
-            identical = []
-            ref_index = 0
-            for param in dict(params_1).items():
-                if param in params_2.items():
-                    identical.append(param)
-                    del params_1[param[0]]
-                    del params_2[param[0]]
-
-            added = []
-            for param in dict(params_2).items():
-                if param[0] not in params_1.keys():
-                    added.append(param)
-                    del params_2[param[0]]
-
-            removed = []
-            for param in dict(params_1).items():
-                if param[0] not in params_2.keys():
-                    removed.append(param)
-                    del params_1[param[0]]
-
-            changed = []
-            for param in params_1.keys():
-                changed.append([param, params_1[param], params_2[param]])
+            pdiff=diffparams(params_1,params_2)
 
             self.set_header("Content-Type", "text/plain")
             self.set_header('Content-Disposition', 'inline; filename=diff.txt')
-            for param in removed:
-                self.write('\033[91m- ' + str(param[0]) + ' = ' + str(param[1]) + '\n')
-            for param in added:
-                self.write('\033[92m+ ' + str(param[0]) + ' = ' + str(param[1]) + '\n')
-            for param in changed:
-                self.write('\033[97m' + str(param[0]) + ' = \033[91m' + str(param[1]) + '/\033[92m' + str(param[2]) + '\n')
+            self.write('Name;Base;Current;\n')
+            for i in range(len(pdiff[0])):
+                for j in range(3):            
+                    self.write(str(pdiff[j][i]) + ';')
+                self.write('\n')
+
+
 
 
         else: # download the log file
