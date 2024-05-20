@@ -14,7 +14,7 @@ from config import plot_color_red
 from helper import (
     get_default_parameters, get_airframe_name,
     get_total_flight_time, error_labels_table,
-    get_event_parser, load_ulog_file
+    load_ulog_file
     )
 from events import get_logged_events
 
