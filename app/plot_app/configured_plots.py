@@ -860,24 +860,73 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
             data_plot.add_graph(['sensors3v3[0]'], colors8[5:6], ['3.3 V'])
     if data_plot.finalize() is not None: plots.append(data_plot)
 
+    # power 2
+    data_plot = DataPlot(data, plot_config, 'battery_status',
+                         y_start=0, title='Power 2',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    if data_plot.dataset:
+        compsumed = np.trapz(data_plot.dataset.data['voltage_v'.format(i)]*data_plot.dataset.data['current_a'.format(i)], data_plot.dataset.data['timestamp']/1000000.0)/3600
+        data_plot.add_graph([lambda data: ('power', data['voltage_filtered_v'] * data['current_filtered_a'])],
+                        colors8[::2]+colors8[1:2], ['Battery power [W] ({:.3} Wh)'.format(compsumed)])
+
+    data_plot.change_dataset('esc_status')
+    if data_plot.dataset:
+        for i in range(1, 8):
+            if (np.amax(data_plot.dataset.data['esc[{}].esc_voltage'.format(i)]) > 0.01):
+                compsumed = np.trapz(data_plot.dataset.data['esc[{}].esc_voltage'.format(i)]*data_plot.dataset.data['esc[{}].esc_current'.format(i)], data_plot.dataset.data['timestamp']/1000000.0)/3600
+                data_plot.add_graph([lambda data: ('power', data['esc[{}].esc_voltage'.format(i)] * data['esc[{}].esc_current'.format(i)])] , colors8[1+i:], ['ESC.{} Power [W] ({:.3} Wh)'.format(i, compsumed)])
+
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+
+
 
     #Temperature
     data_plot = DataPlot(data, plot_config, 'sensor_baro',
                          y_start=0, y_axis_label='[C]', title='Temperature',
                          plot_height='small', changed_params=changed_params,
                          x_range=x_range)
-    data_plot.add_graph(['temperature'], colors8[0:1],
+    data_plot.add_graph(['temperature'], [colors8[0]],
                         ['Baro temperature'])
     data_plot.change_dataset('sensor_accel')
-    data_plot.add_graph(['temperature'], colors8[2:3],
+    data_plot.add_graph(['temperature'], [colors8[1]],
                         ['Accel temperature'])
     data_plot.change_dataset('airspeed')
-    data_plot.add_graph(['air_temperature_celsius'], colors8[4:5],
+    data_plot.add_graph(['air_temperature_celsius'], [colors8[2]],
                         ['Airspeed temperature'])
     data_plot.change_dataset('battery_status')
-    data_plot.add_graph(['temperature'], colors8[6:7],
+    data_plot.add_graph(['temperature'], [colors8[3]],
                         ['Battery temperature'])
+    data_plot.change_dataset('sensor_hygrometer')
+    data_plot.add_graph(['temperature'], [colors8[4]],
+                        ['SHT3x temperature'])
     if data_plot.finalize() is not None: plots.append(data_plot)
+ 
+    # Autogyro Takeoff
+    data_plot = DataPlot(data, plot_config, 'autogyro_takeoff_status',
+                         y_start=0, y_axis_label='[value]', title='Autogyro takeoff',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    data_plot.add_graph(['state'], colors3[0:1], ['state'])
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+   # Autogyro Takeoff (alternative camera)
+    data_plot = DataPlot(data, plot_config, 'camera_capture',
+                         y_start=0, y_axis_label='[value]', title='Autogyro takeoff - Camera_capture',
+                         plot_height='small', changed_params=changed_params,
+                         x_range=x_range)
+    data_plot.add_graph(['seq', lambda data: ('timestamp_utc', data['timestamp_utc']/10.0**7)], colors3[0:1]+colors3[2:3], ['seq', 'time in state [s/10]'])
+    if data_plot.finalize() is not None: plots.append(data_plot)
+
+
+#    data_plot.add_graph(['voltage_v', 'voltage_filtered_v',
+#                         'current_a', lambda data: ('discharged_mah', data['discharged_mah']/100),
+#                         lambda data: ('remaining', data['remaining']*10)],
+#                        colors8[::2]+colors8[1:2],
+#                        ['Battery Voltage [V]', 'Battery Voltage filtered [V]',
+#                         'Battery Current [A]', 'Discharged Amount [mAh / 100]',
+#                         'Battery remaining [0=empty, 10=full]'])
 
 
     # estimator flags
