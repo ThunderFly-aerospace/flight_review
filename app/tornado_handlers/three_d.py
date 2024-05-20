@@ -155,6 +155,9 @@ class ThreeDHandler(TornadoRequestHandlerBase):
         if mav_type == 1: # fixed wing
             model_scale_factor = 0.06
             model_uri = 'plot_app/static/cesium/SampleData/models/CesiumAir/Cesium_Air.glb'
+## force TF-G2
+            model_scale_factor = 0.01
+            model_uri = 'plot_app/static/cesium/models/tf-g2/TF-G2.glb'
         elif mav_type == 7: # Airship, controlled
             model_scale_factor = 0.1
             model_uri = 'plot_app/static/cesium/SampleData/models/CesiumBalloon/CesiumBalloon.glb'
