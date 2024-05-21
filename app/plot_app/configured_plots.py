@@ -15,7 +15,7 @@ from plotting import *
 from plotted_tables import (
     get_logged_messages, get_changed_parameters,
     get_info_table_html, get_heading_html, get_error_labels_html,
-    get_hardfault_html, get_corrupt_log_html
+    get_hardfault_html, get_corrupt_log_html, get_param_diff
     )
 
 from vtol_tailsitter import *
@@ -26,7 +26,7 @@ from vtol_tailsitter import *
 
 
 def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
-                   link_to_pid_analysis_page):
+                   link_to_pid_analysis_page,compare_log_filename):
     """ create a list of bokeh plots (and widgets) to show """
 
     plots = []
@@ -1049,6 +1049,10 @@ def generate_plots(ulog, px4_ulog, db_data, vehicle_data, link_to_3d_page,
 
     # changed parameters
     plots.append(get_changed_parameters(ulog, plot_width))
+
+    # parameters diff
+    if len(compare_log_filename)!=0:
+        plots.append(get_param_diff(ulog,compare_log_filename, plot_width))
 
 
 

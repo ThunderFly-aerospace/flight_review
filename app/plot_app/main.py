@@ -93,6 +93,7 @@ else:
     ulog_file_name = os.path.join(get_log_filepath(), ulog_file_name)
     error_message = ''
     log_id = ''
+    compare_log_id = ''
 
     try:
 
@@ -226,9 +227,19 @@ else:
             link_to_3d_page = '3d?log='+log_id
             link_to_pid_analysis_page = '?plots=pid_analysis&log='+log_id
 
+            compare_log_filename=""
+            if GET_arguments is not None and 'compare' in GET_arguments:
+                compare_log_args = GET_arguments['compare']
+                if len(compare_log_args) == 1:
+                    compare_log_id = str(compare_log_args[0], 'utf-8')
+                    if len(compare_log_id)!=0:
+                        compare_log_filename = get_log_filename(compare_log_id)
+
+            curdoc().template_variables['compare_log_id'] = compare_log_id
+
             try:
                 plots = generate_plots(ulog, px4_ulog, db_data, vehicle_data,
-                                       link_to_3d_page, link_to_pid_analysis_page)
+                                       link_to_3d_page, link_to_pid_analysis_page,compare_log_filename)
 
                 title = 'Flight Review - '+px4_ulog.get_mav_type()
 

@@ -13,9 +13,12 @@ from bokeh.models.widgets import DataTable, TableColumn, Div, HTMLTemplateFormat
 from config import plot_color_red
 from helper import (
     get_default_parameters, get_airframe_name,
-    get_total_flight_time, error_labels_table
+    get_total_flight_time, error_labels_table,
+    load_ulog_file
     )
 from events import get_logged_events
+
+from diffparams import diffparams
 
 #pylint: disable=consider-using-enumerate,too-many-statements
 
@@ -534,6 +537,36 @@ def get_changed_parameters(ulog, plot_width):
                            height=300, sortable=False, selectable=False,
                            autosize_mode='none')
     div = Div(text="""<b>Non-default Parameters</b> (except RC and sensor calibration)""",
+              width=int(plot_width/2))
+    return column(div, data_table, width=plot_width)
+
+def get_param_diff(ulog, compare_ulog_filename, plot_width):
+    """
+    get a bokeh column object with parameters diff
+    """
+
+    params_1 = load_ulog_file(compare_ulog_filename).initial_parameters
+    params_2 = ulog.initial_parameters
+
+    pdiff=diffparams(params_1,params_2)
+    param_data = dict(
+        names=pdiff[0],
+        base=pdiff[1],
+        current=pdiff[2],
+        colors=pdiff[3])
+    source = ColumnDataSource(param_data)
+    formatter = HTMLTemplateFormatter(template='<font color="<%= colors %>"><%= value %></font>')
+    columns = [
+        TableColumn(field="names", title="Name",
+                    width=int(plot_width*0.2), sortable=False),
+        TableColumn(field="base", title="base",
+                    width=int(plot_width*0.15), sortable=False, formatter=formatter),
+        TableColumn(field="current", title="current",
+                    width=int(plot_width*0.15), sortable=False, formatter=formatter),
+        ]
+    data_table = DataTable(source=source, columns=columns, width=plot_width,
+                           height=300, sortable=False, selectable=False)
+    div = Div(text="""<b>Parameters diff</b>""",
               width=int(plot_width/2))
     return column(div, data_table, width=plot_width)
 

@@ -25,6 +25,9 @@ from .common import CustomHTTPError, TornadoRequestHandlerBase
 
 #pylint: disable=abstract-method, unused-argument
 
+from plot_app.diffparams import diffparams
+
+
 class DownloadHandler(TornadoRequestHandlerBase):
     """ Download log file Tornado request handler """
 
@@ -218,6 +221,28 @@ class DownloadHandler(TornadoRequestHandlerBase):
                             self.write('\n')
                     except:
                         pass
+
+        elif download_type == '4': # download parameters diff
+            compare_log_id = self.get_argument('compare')
+            if not validate_log_id(compare_log_id):
+                raise tornado.web.HTTPError(400, 'Invalid Parameter - select compare on browse first')
+            compare_log_file_name = get_log_filename(compare_log_id)
+
+            params_1 = load_ulog_file(compare_log_file_name).initial_parameters
+            params_2 = load_ulog_file(log_file_name).initial_parameters
+
+            pdiff=diffparams(params_1,params_2)
+
+            self.set_header("Content-Type", "text/plain")
+            self.set_header('Content-Disposition', 'inline; filename=diff.txt')
+            self.write('Name;Base;Current;\n')
+            for i in range(len(pdiff[0])):
+                for j in range(3):            
+                    self.write(str(pdiff[j][i]) + ';')
+                self.write('\n')
+
+
+
 
         else: # download the log file
             self.set_header('Content-Type', 'application/octet-stream')
