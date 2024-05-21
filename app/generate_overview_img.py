@@ -16,9 +16,13 @@ cur = con.cursor()
 cur.execute('SELECT Id FROM Logs WHERE Public = 1 ORDER BY Date DESC')
 db_tuples = cur.fetchall()
 
-for db_row in db_tuples:    
+i=0
+for db_row in db_tuples: 
     log_id=db_row[0]
     generate_overview_img_from_id(log_id)
+    i=i+1
+    if i % 10 ==0:
+      print(i,len(db_tuples))
 
 cur.close()
 con.close()
